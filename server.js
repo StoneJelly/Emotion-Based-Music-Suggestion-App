@@ -30,6 +30,27 @@ app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/models', express.static(path.join(__dirname, 'models')));
 
+// Spotify credentials: you can hardcode your client id/secret here
+// Replace the placeholder strings below with your actual credentials
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
+
+const spotifyApi = new SpotifyWebApi({
+  clientId: SPOTIFY_CLIENT_ID,
+  clientSecret: SPOTIFY_CLIENT_SECRET,
+});
+
+if (SPOTIFY_CLIENT_ID.startsWith('YOUR_') || SPOTIFY_CLIENT_SECRET.startsWith('YOUR_')) {
+  console.warn('Warning: Spotify client ID/secret are using placeholder values in server.js. Replace them with real credentials.');
+}
+
+async function spotifyAuth() {
+  try {
+    const data = await spotifyApi.clientCredentialsGrant();
+    spotifyApi.setAccessToken(data.body['access_token']);
+    console.log('Spotify access token acquired');
+    // Refresh token shortly before expiry
+    setTimeout(spotifyAuth, (data.body['expires_in'] - 60) * 1000);
 
 
 
