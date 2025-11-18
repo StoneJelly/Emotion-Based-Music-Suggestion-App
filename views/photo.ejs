@@ -11,6 +11,7 @@
   <style>
     body {
       margin: 0;
+      padding: 0;
       width: 100vw;
       height: 100vh;
       display: flex;
@@ -31,12 +32,8 @@
 
   <video id="video" width="720" height="560" autoplay muted></video>
 
-  <div style="position: absolute; left: 20px; top: 20px; z-index: 20;">
-    <button id="analyze-button">Analyze Emotion (3s)</button>
-  </div>
-
   <!-- Add this section for suggested songs -->
-  <div id="suggested-songs" style="position: absolute; left: 20px; bottom: 20px; z-index: 20; background: rgba(255,255,255,0.9); padding: 12px; border-radius: 8px; max-width: 300px;">
+  <div id="suggested-songs">
     <h2>Suggested Songs</h2>
     <ul>
       <!-- Songs will be dynamically added here -->

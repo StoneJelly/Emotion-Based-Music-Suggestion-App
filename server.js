@@ -1,10 +1,27 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const path = require('path');
-const SpotifyWebApi = require('spotify-web-api-node');
+const multer = require('multer');
+const fs = require('fs');
+
+const Music = require('./model/music');
 
 const app = express();
 const port = 3000;
+
+
+// Set up the storage for multer
+const storage = multer.diskStorage({
+  destination: './public/songs',
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+// Initialize multer
+const upload = multer({ storage: storage });
+
 
 // Set up middleware
 app.use(bodyParser.json());
@@ -34,55 +51,55 @@ async function spotifyAuth() {
     console.log('Spotify access token acquired');
     // Refresh token shortly before expiry
     setTimeout(spotifyAuth, (data.body['expires_in'] - 60) * 1000);
-  } catch (err) {
-    console.error('Failed to get Spotify access token', err.message || err);
-  }
-}
 
-spotifyAuth();
+
+
+// Route to add a new music track with song file upload
+app.post('/addMusic', upload.single('songFile'), async (req, res) => {
+  try {
+    const { title, artist, duration, genre } = req.body;
+    const filePath = req.file.path; // Get the file path of the uploaded song
+
+    const music = new Music({ title, artist, duration, genre, filePath });
+    await music.save();
+    res.redirect('/');
+  } catch (err) {
+    res.status(500).send('Error adding the music track.');
+  }
+});
 
 
 // Route to get all music tracks
 app.get('/', async (req, res) => {
   try {
-    // Default: fetch some popular tracks (search by keyword)
-    const result = await spotifyApi.searchTracks('pop', { limit: 20 });
-    const musicTracks = result.body.tracks.items.map(t => ({
-      id: t.id,
-      title: t.name,
-      artist: t.artists.map(a => a.name).join(', '),
-      preview_url: t.preview_url,
-      spotify_url: t.external_urls && t.external_urls.spotify,
-    }));
+    const musicTracks = await Music.find();
     res.render('index', { musicTracks });
   } catch (err) {
     res.status(500).send('Error fetching music tracks.');
   }
 });
 
+
 // Route to stream the music
 app.get('/music/:id', async (req, res) => {
   try {
-    const trackId = req.params.id;
-    const data = await spotifyApi.getTrack(trackId);
-    const track = data.body;
-    if (track.preview_url) {
-      // Redirect to preview URL (Spotify CDN)
-      return res.redirect(track.preview_url);
+    const music = await Music.findById(req.params.id);
+    if (!music) {
+      return res.status(404).send('Music not found');
     }
-    // If no preview available, redirect to Spotify track page
-    if (track.external_urls && track.external_urls.spotify) {
-      return res.redirect(track.external_urls.spotify);
-    }
-    res.status(404).send('Track preview not available');
+    // Read the music file from the server's file system
+    const fileStream = fs.createReadStream(music.filePath);
+    fileStream.pipe(res);
   } catch (err) {
-    res.status(500).send('Error fetching track from Spotify.');
+    res.status(500).send('Error streaming the music.');
   }
 });
+
 
 app.get('/photo', (req, res) => {
   res.render('photo'); // Renders the capture.ejs view
 });
+
 
 app.post('/analyzeEmotion', async (req, res) => {
   try {
@@ -108,22 +125,32 @@ app.post('/analyzeEmotion', async (req, res) => {
         break;
     }
 
-    // Fetch suggested songs from Spotify based on genre keyword
-    const q = genre || 'pop';
-    const results = await spotifyApi.searchTracks(q, { limit: 12 });
-    const suggestedSongs = results.body.tracks.items.map(t => ({
-      id: t.id,
-      title: t.name,
-      artist: t.artists.map(a => a.name).join(', '),
-      preview_url: t.preview_url,
-      spotify_url: t.external_urls && t.external_urls.spotify,
-    }));
+    // Fetch suggested songs based on the genre
+    const suggestedSongs = await Music.find({ genre });
     res.json(suggestedSongs);
   } catch (err) {
     res.status(500).send('Error analyzing emotion.');
   }
 });
-// No DB connection required; using Spotify API instead
+
+
+
+
+
+async function dbconnection(){
+  try {
+    // await mongoose.connect("mongodb://127.0.0.1:27017/music_player")
+    await mongoose.connect("mongodb+srv://mishabp9633:98Zqm6FuQBKv1sCw@shobhagold.pjuqog5.mongodb.net/music_player?retryWrites=true&w=majority")
+    console.log("monogo db connecetd");
+    
+  } catch (error) {
+    console.log("monogo db not connecttd");
+
+    throw error
+  }
+}
+
+dbconnection()
 
 // Start the server
 app.listen(port, () => {
