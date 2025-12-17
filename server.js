@@ -2,26 +2,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const path = require('path');
-const multer = require('multer');
-const fs = require('fs');
+
+const SpotifyWebApi = require('spotify-web-api-node');
 
 const Music = require('./model/music');
 
 const app = express();
 const port = 3000;
-
-
-// Set up the storage for multer
-const storage = multer.diskStorage({
-  destination: './public/songs',
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
-// Initialize multer
-const upload = multer({ storage: storage });
-
 
 // Set up middleware
 app.use(bodyParser.json());
@@ -65,81 +52,109 @@ app.post('/addMusic', upload.single('songFile'), async (req, res) => {
     res.redirect('/');
   } catch (err) {
     res.status(500).send('Error adding the music track.');
-  }
+=======
+// Spotify credentials: you can hardcode your client id/secret here
+// Replace the placeholder strings below with your actual credentials
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
+
+const spotifyApi = new SpotifyWebApi({
+  clientId: SPOTIFY_CLIENT_ID,
+  clientSecret: SPOTIFY_CLIENT_SECRET,
 });
 
 
-// Route to get all music tracks
-app.get('/', async (req, res) => {
+if (SPOTIFY_CLIENT_ID.startsWith('YOUR_') || SPOTIFY_CLIENT_SECRET.startsWith('YOUR_')) {
+  console.warn('Warning: Spotify client ID/secret are using placeholder values in server.js. Replace them with real credentials.');
+}
+
+
+async function spotifyAuth() {
   try {
-    const musicTracks = await Music.find();
-    res.render('index', { musicTracks });
-  } catch (err) {
-    res.status(500).send('Error fetching music tracks.');
+    const data = await spotifyApi.clientCredentialsGrant();
+    spotifyApi.setAccessToken(data.body['access_token']);
+    console.log('Spotify access token acquired');
+    // Refresh token shortly before expiry
+    setTimeout(spotifyAuth, (data.body['expires_in'] - 60) * 1000);
+  } catch (error) {
+    console.error('Error authenticating with Spotify:', error);
   }
+}
+
+// Modified: Root route now redirects to the photo analysis page
+app.get('/', (req, res) => {
+  // Assuming the main entry point is now the emotion analysis
+  res.redirect('/photo');
 });
-
-
-// Route to stream the music
-app.get('/music/:id', async (req, res) => {
-  try {
-    const music = await Music.findById(req.params.id);
-    if (!music) {
-      return res.status(404).send('Music not found');
-    }
-    // Read the music file from the server's file system
-    const fileStream = fs.createReadStream(music.filePath);
-    fileStream.pipe(res);
-  } catch (err) {
-    res.status(500).send('Error streaming the music.');
-  }
-});
-
 
 app.get('/photo', (req, res) => {
   res.render('photo'); // Renders the capture.ejs view
 });
 
-
 app.post('/analyzeEmotion', async (req, res) => {
   try {
-    const { emotion } = req.body; // Get the emotion from req.body
+    const { emotion } = req.body;
 
-    // Select appropriate genre based on the detected emotion
-    let genre;
+    // Map emotions to Spotify-friendly keywords/genres
+    let query;
     switch (emotion) {
       case 'happy':
-        genre = 'Rock';
+        query = 'happy';
         break;
       case 'neutral':
-        genre = 'Pop';
+        query = 'chill';
         break;
       case 'angry':
-        genre = 'Rock';
+        query = 'rock';
         break;
       case 'sad':
-        genre = 'Blues';
+        query = 'sad';
         break;
       default:
-        genre = 'Pop'; // Default genre
+        query = 'pop';
         break;
     }
 
-    // Fetch suggested songs based on the genre
-    const suggestedSongs = await Music.find({ genre });
-    res.json(suggestedSongs);
+    // Step 1: Get total number of tracks available for this genre
+    const initialResponse = await spotifyApi.searchTracks(`genre:${query}`, { limit: 1 });
+    const totalTracks = initialResponse.body.tracks.total;
+
+    // Step 2: Pick a random offset for variety
+    const offset = Math.floor(Math.random() * Math.max(totalTracks - 10, 1));
+
+    // Step 3: Fetch 10 tracks starting from the random offset
+    const spotifyResponse = await spotifyApi.searchTracks(`genre:${query}`, {
+      limit: 10,
+      offset,
+    });
+
+    const tracks = spotifyResponse.body.tracks.items;
+
+    // Step 4: Shuffle tracks to maximize randomness
+    const shuffledTracks = tracks.sort(() => Math.random() - 0.5);
+
+    // Step 5: Map tracks to frontend-friendly format
+    const songs = shuffledTracks
+      .filter(track => track.preview_url || track.external_urls.spotify) // ensure at least preview or link exists
+      .map(track => ({
+        title: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        genre: query,
+        preview_url: track.preview_url, // 30-sec preview
+        spotify_url: track.external_urls.spotify, // full track link
+      }));
+
+    console.log("Songs sent to frontend:", songs); // Debug log
+
+    res.json(songs);
   } catch (err) {
+    console.error('Error fetching Spotify tracks:', err);
     res.status(500).send('Error analyzing emotion.');
   }
 });
 
-
-
-
-
 async function dbconnection(){
   try {
-    // await mongoose.connect("mongodb://127.0.0.1:27017/music_player")
     await mongoose.connect("mongodb+srv://mishabp9633:98Zqm6FuQBKv1sCw@shobhagold.pjuqog5.mongodb.net/music_player?retryWrites=true&w=majority")
     console.log("monogo db connecetd");
     
@@ -157,3 +172,4 @@ app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
 
+spotifyAuth();
