@@ -19,44 +19,8 @@ app.use('/models', express.static(path.join(__dirname, 'models')));
 
 // Spotify credentials: you can hardcode your client id/secret here
 // Replace the placeholder strings below with your actual credentials
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
-
-const spotifyApi = new SpotifyWebApi({
-  clientId: SPOTIFY_CLIENT_ID,
-  clientSecret: SPOTIFY_CLIENT_SECRET,
-});
-
-if (SPOTIFY_CLIENT_ID.startsWith('YOUR_') || SPOTIFY_CLIENT_SECRET.startsWith('YOUR_')) {
-  console.warn('Warning: Spotify client ID/secret are using placeholder values in server.js. Replace them with real credentials.');
-}
-
-async function spotifyAuth() {
-  try {
-    const data = await spotifyApi.clientCredentialsGrant();
-    spotifyApi.setAccessToken(data.body['access_token']);
-    console.log('Spotify access token acquired');
-    // Refresh token shortly before expiry
-    setTimeout(spotifyAuth, (data.body['expires_in'] - 60) * 1000);
-
-
-
-// Route to add a new music track with song file upload
-app.post('/addMusic', upload.single('songFile'), async (req, res) => {
-  try {
-    const { title, artist, duration, genre } = req.body;
-    const filePath = req.file.path; // Get the file path of the uploaded song
-
-    const music = new Music({ title, artist, duration, genre, filePath });
-    await music.save();
-    res.redirect('/');
-  } catch (err) {
-    res.status(500).send('Error adding the music track.');
-=======
-// Spotify credentials: you can hardcode your client id/secret here
-// Replace the placeholder strings below with your actual credentials
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '';
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || '';
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '0b7cdbcd9614456798ab1816a2490600';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || 'eddaccc6181c4d918accb82416b71fb7';
 
 const spotifyApi = new SpotifyWebApi({
   clientId: SPOTIFY_CLIENT_ID,
