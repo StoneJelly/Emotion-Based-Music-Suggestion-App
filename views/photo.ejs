@@ -1,181 +1,189 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Smart Face Emotion and Hand Detection</title>
-    
-    <script defer src="face-api.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.2/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
-    
-    <script defer src="script.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Face Emotion and Hand Detection</title>
 
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #f2f4f8;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            font-family: "Segoe UI", sans-serif;
-        }
+  <!-- Face API -->
+  <script defer src="face-api.min.js"></script>
 
-        header {
-            width: 100%;
-            background: #4b6cb7;
-            background: linear-gradient(135deg, #4b6cb7, #182848);
-            padding: 20px;
-            text-align: center;
-            color: white;
-            font-size: 1.8rem;
-            font-weight: 600;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.2/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
 
-        #container {
-            display: flex;
-            gap: 40px;
-            margin-top: 40px;
-            align-items: flex-start;
-        }
+  <!-- Your Script -->
+  <script defer src="script.js"></script>
 
-        #video-container {
-            position: relative;
-            display: inline-block;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.2);
-        }
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #f2f4f8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: "Segoe UI", sans-serif;
+    }
 
-        video {
-            border-radius: 12px;
-        }
+    header {
+      width: 100%;
+      background: linear-gradient(135deg, #4b6cb7, #182848);
+      padding: 20px;
+      text-align: center;
+      color: white;
+      font-size: 1.8rem;
+      font-weight: 600;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
 
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            /* Ensure canvas covers the video area exactly */
-            width: 100%; 
-            height: 100%;
-        }
+    #container {
+      display: flex;
+      gap: 40px;
+      margin-top: 40px;
+      align-items: flex-start;
+    }
 
-        #controls {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            padding: 20px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 320px;
-        }
+    /* ===== VIDEO + CANVAS (CRITICAL FIX) ===== */
+    #video-container {
+      position: relative;
+      width: 720px;
+      height: 560px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: black;
+      box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.2);
+    }
 
-        #analyzeBtn {
-            padding: 12px 20px;
-            background: #4b6cb7;
-            color: white;
-            border: none;
-            font-size: 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: 0.2s;
-            width: 200px;
-        }
+    video,
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 720px;
+      height: 560px;
+    }
 
-        #analyzeBtn:hover {
-            background: #3c56a0;
-        }
+    video {
+      object-fit: cover;
+    }
 
-        #suggested-songs {
-            margin-top: 10px;
-            padding: 15px;
-            background: #ffffff;
-            border-radius: 10px;
-            width: 100%;
-            max-width: 360px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+    canvas {
+      pointer-events: none;
+    }
 
-        #suggested-songs ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      padding: 20px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.1);
+      width: 320px;
+    }
 
-        #suggested-songs li {
-            padding: 8px 0;
-            border-bottom: 1px solid #ddd;
-            font-size: 0.95rem;
-        }
+    #analyzeBtn {
+      padding: 12px 20px;
+      background: #4b6cb7;
+      color: white;
+      border: none;
+      font-size: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
 
-        #suggested-songs li:last-child {
-            border-bottom: none;
-        }
-        
-        .spotify-embed, iframe[src*="spotify"] {
-            width: 100% !important;
-            max-width: 100% !important;
-            border-radius: 10px;
-        }
+    #analyzeBtn:hover {
+      background: #3c56a0;
+    }
 
-        /* Responsive styles */
-        @media (max-width: 900px) {
-            #container {
-                flex-direction: column;
-                align-items: center;
-            }
+    #analyzeBtn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
 
-            #controls {
-                max-width: 95%;
-                width: 95%;
-            }
+    #status {
+      padding: 8px 0;
+      font-weight: bold;
+      color: #4b6cb7;
+      text-align: center;
+    }
 
-            #suggested-songs {
-                width: 100%;
-                max-width: 100%;
-            }
-        }
-        /* New element for status feedback */
-        #status {
-            padding: 8px 0;
-            font-weight: bold;
-            color: #4b6cb7;
-            text-align: center;
-        }
-    </style>
+    #suggested-songs {
+      margin-top: 10px;
+      padding: 15px;
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    iframe {
+      border: none;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
+
 <body>
 
-    <header>😊 Smart Face Emotion Detection with Hand-Guard</header>
+  <header>😊 Smart Face Emotion Detection with Hand-Guard</header>
 
-    <div id="container">
+  <div id="container">
 
-        <div id="video-container">
-            <video id="video" width="720" height="560" autoplay muted></video>
-        </div>
-
-        <div id="controls">
-            <button id="analyzeBtn" disabled>Loading Models...</button>
-            <div id="status">Loading...</div>
-
-            <div id="suggested-songs">
-                <strong>🎵 Suggested Songs</strong>
-                <ul></ul>
-            </div>
-        </div>
-
+    <!-- VIDEO -->
+    <div id="video-container">
+      <video id="video" autoplay muted playsinline></video>
     </div>
+
+    <!-- CONTROLS -->
+    <div id="controls">
+      <button id="analyzeBtn" disabled>Loading Models...</button>
+      <div id="status">Ready</div>
+
+      <div id="suggested-songs">
+        <strong>🎵 Suggested Songs</strong>
+
+        <!-- FEEDBACK -->
+        <div id="feedback-container" style="
+          display:none;
+          background:#ffffff;
+          padding:15px;
+          border-radius:12px;
+          border:2px solid #4b6cb7;
+          margin:15px 0;
+          box-shadow:0 4px 12px rgba(0,0,0,0.1);
+        ">
+          <p style="margin:0 0 10px 0; font-size:0.95rem; color:#182848;">
+            Is your emotion
+            <strong><span id="predicted-emotion-text">...</span></strong>
+            <span id="container-emoji"></span> ?
+          </p>
+
+          <div style="display:flex; gap:10px;">
+            <button id="btn-yes" style="
+              flex:1; padding:8px;
+              background:#4b6cb7; color:white;
+              border:none; border-radius:6px;
+              cursor:pointer; font-weight:bold;
+            ">Yes</button>
+
+            <button id="btn-no" style="
+              flex:1; padding:8px;
+              background:#e0e0e0; color:#333;
+              border:none; border-radius:6px;
+              cursor:pointer; font-weight:bold;
+            ">No</button>
+          </div>
+        </div>
+
+        <ul id="song-list" style="list-style:none; padding:0;"></ul>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>

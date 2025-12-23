@@ -1,38 +1,42 @@
-// ====================================================================
-// DOM REFERENCES & CONSTANTS
-// ====================================================================
+// ===================== DOM ELEMENTS =====================
 const video = document.getElementById("video");
 const analyzeBtn = document.getElementById("analyzeBtn");
 const statusDiv = document.getElementById("status");
 const videoContainer = document.getElementById("video-container");
 
-const VIDEO_WIDTH = 720;
-const VIDEO_HEIGHT = 560;
+const feedbackContainer = document.getElementById("feedback-container");
+const predictedSpan = document.getElementById("predicted-emotion-text");
+const containerEmoji = document.getElementById("container-emoji");
+const songList = document.getElementById("song-list");
+
+// ===================== CONSTANTS =====================
+const DISPLAY_WIDTH = 720;
+const DISPLAY_HEIGHT = 560;
 const ANALYSIS_DURATION = 5000;
 
-video.width = VIDEO_WIDTH;
-video.height = VIDEO_HEIGHT;
+const HAND_CONNECTIONS = window.HAND_CONNECTIONS;
 
-// ====================================================================
-// GLOBAL STATE
-// ====================================================================
-let stream = null;
-let canvas = null;
-let faceLoop = null;
-
-let handDetector = null;
+// ===================== GLOBAL STATE =====================
+let canvas;
+let handDetector;
+let currentFaceDetections = [];
+let currentHandLandmarks = [];
 let lastFaceBox = null;
 let isHandBlocking = false;
-
-// ---- ANALYSIS STATE MACHINE ----
-let analysisState = "IDLE"; // IDLE | ANALYZING | PAUSED | FINISHED
+let analysisState = "IDLE";
 let clearFaceTime = 0;
 let lastTick = 0;
 let emotionCounter = {};
 
-// ====================================================================
-// LOAD MODELS
-// ====================================================================
+// ===================== HELPERS =====================
+function videoDims() {
+  return {
+    w: video.videoWidth,
+    h: video.videoHeight,
+  };
+}
+
+// ===================== LOAD MODELS =====================
 async function loadModels() {
   statusDiv.textContent = "Loading models...";
   await Promise.all([
@@ -42,6 +46,7 @@ async function loadModels() {
   ]);
 }
 
+// ===================== HAND DETECTOR =====================
 async function setupHandDetector() {
   handDetector = new Hands({
     locateFile: (file) =>
@@ -55,187 +60,138 @@ async function setupHandDetector() {
     minTrackingConfidence: 0.6,
   });
 
-  handDetector.onResults(onHandResults);
-}
-
-// ====================================================================
-// CAMERA
-// ====================================================================
-async function startCamera() {
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
+  handDetector.onResults((results) => {
+    currentHandLandmarks = results.multiHandLandmarks || [];
   });
-  video.srcObject = stream;
 }
 
-function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
+// ===================== DRAW LOOP =====================
+function startUnifiedDrawLoop() {
+  if (!canvas) {
+    canvas = faceapi.createCanvasFromMedia(video);
+    videoContainer.appendChild(canvas);
   }
-}
 
-// ====================================================================
-// FACE LOOP (DRAW + FACE BOX)
-// ====================================================================
-async function startFaceLoop() {
-  canvas = faceapi.createCanvasFromMedia(video);
-  videoContainer.append(canvas);
-  faceapi.matchDimensions(canvas, {
-    width: VIDEO_WIDTH,
-    height: VIDEO_HEIGHT,
-  });
+  const ctx = canvas.getContext("2d");
 
-  faceLoop = setInterval(async () => {
-    const detections = await faceapi
-      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks();
+  function drawFrame() {
+    const { w, h } = videoDims();
 
-    const resized = faceapi.resizeResults(detections, {
-      width: VIDEO_WIDTH,
-      height: VIDEO_HEIGHT,
-    });
+    canvas.width = w;
+    canvas.height = h;
 
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, w, h);
 
-    faceapi.draw.drawDetections(canvas, resized);
-    faceapi.draw.drawFaceLandmarks(canvas, resized);
-
-    lastFaceBox = resized.length ? resized[0].detection.box : null;
-
-    ctx.font = "26px Arial";
-    if (analysisState === "PAUSED") {
-      ctx.fillStyle = "red";
-      ctx.fillText("✋ REMOVE HAND FROM FACE", 40, 50);
-    } else if (analysisState === "ANALYZING") {
-      ctx.fillStyle = "lime";
-      ctx.fillText("FACE CLEAR", 40, 50);
-    }
-  }, 100);
-}
-
-// ====================================================================
-// HAND DETECTION LOOP
-// ====================================================================
-async function detectHands() {
-  if (!handDetector || !video.srcObject) return;
-  await handDetector.send({ image: video });
-  requestAnimationFrame(detectHands);
-}
-
-function onHandResults(results) {
-  isHandBlocking = false;
-  if (!lastFaceBox || !results.multiHandLandmarks?.length) return;
-
-  const w = canvas.width;
-  const h = canvas.height;
-
-  for (const hand of results.multiHandLandmarks) {
-    let minX = w,
-      minY = h,
-      maxX = 0,
-      maxY = 0;
-
-    hand.forEach((p) => {
-      const x = p.x * w;
-      const y = p.y * h;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    });
-
-    const overlap =
-      lastFaceBox.x < maxX &&
-      lastFaceBox.x + lastFaceBox.width > minX &&
-      lastFaceBox.y < maxY &&
-      lastFaceBox.y + lastFaceBox.height > minY;
-
-    if (overlap) {
-      isHandBlocking = true;
-      break;
-    }
-  }
-}
-
-// ====================================================================
-// EMOTION ANALYSIS (HAND-AWARE)
-// ====================================================================
-function startEmotionAnalysis() {
-  analysisState = "ANALYZING";
-  clearFaceTime = 0;
-  emotionCounter = {};
-  lastTick = Date.now();
-
-  analyzeBtn.disabled = true;
-  statusDiv.textContent = "Analyzing emotion...";
-
-  const analysisInterval = setInterval(async () => {
-    const now = Date.now();
-    const delta = now - lastTick;
-    lastTick = now;
-
-    // ---------- HAND BLOCK → PAUSE ----------
-    if (isHandBlocking || !lastFaceBox) {
-      analysisState = "PAUSED";
-      statusDiv.textContent = "✋ Face blocked — timer paused";
-      return;
-    }
-
-    // ---------- RESUME ----------
-    if (analysisState === "PAUSED") {
-      analysisState = "ANALYZING";
-      lastTick = Date.now();
-      return;
-    }
-
-    // ---------- COUNT VALID TIME ----------
-    clearFaceTime += delta;
-    statusDiv.textContent = `Analyzing... ${(clearFaceTime / 1000).toFixed(
-      1
-    )} / 5.0s`;
-
-    // ---------- EMOTION DETECTION ----------
-    const detections = await faceapi
-      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceExpressions();
-
-    if (!detections.length) return;
-
-    let bestEmotion = "";
-    let maxVal = 0;
-    for (const e in detections[0].expressions) {
-      if (detections[0].expressions[e] > maxVal) {
-        maxVal = detections[0].expressions[e];
-        bestEmotion = e;
-      }
-    }
-
-    emotionCounter[bestEmotion] =
-      (emotionCounter[bestEmotion] || 0) + 1;
-
-    // ---------- FINISH ----------
-    if (clearFaceTime >= ANALYSIS_DURATION) {
-      clearInterval(analysisInterval);
-      analysisState = "FINISHED";
-
-      const finalEmotion = Object.keys(emotionCounter).reduce((a, b) =>
-        emotionCounter[a] > emotionCounter[b] ? a : b
+    // ---------- FACE ----------
+    if (currentFaceDetections.length) {
+      const resized = faceapi.resizeResults(
+        currentFaceDetections,
+        { width: w, height: h }
       );
 
-      await fetchSpotifyTracks(finalEmotion);
-
-      analyzeBtn.disabled = false;
-      analyzeBtn.textContent = "Analyze Face";
-      statusDiv.textContent = `✅ Dominant emotion: ${finalEmotion}`;
+      faceapi.draw.drawDetections(canvas, resized);
+      faceapi.draw.drawFaceLandmarks(canvas, resized);
+      lastFaceBox = resized[0].detection.box;
+    } else {
+      lastFaceBox = null;
     }
-  }, 300);
+
+    // ---------- HANDS ----------
+    isHandBlocking = false;
+
+    for (const landmarks of currentHandLandmarks) {
+      const overlap = lastFaceBox
+        ? checkHandFaceOverlap(landmarks, lastFaceBox)
+        : false;
+
+      if (overlap) isHandBlocking = true;
+
+      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+        color: overlap ? "#ff0000" : "#00ff88",
+        lineWidth: 4,
+      });
+
+      drawLandmarks(ctx, landmarks, {
+        color: "#ffffff",
+        radius: 3,
+      });
+
+      drawHandBoundingBox(ctx, landmarks, overlap);
+    }
+
+    // ---------- STATUS ----------
+    ctx.font = "bold 26px Arial";
+    if (isHandBlocking) {
+      ctx.fillStyle = "red";
+      ctx.fillText("✋ HAND BLOCKING FACE", 30, 40);
+    } else if (analysisState === "ANALYZING") {
+      ctx.fillStyle = "lime";
+      ctx.fillText(
+        `ANALYZING... ${(clearFaceTime / 1000).toFixed(1)}s`,
+        30,
+        40
+      );
+    }
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  drawFrame();
 }
 
-// ====================================================================
-// BACKEND (SPOTIFY)
-// ====================================================================
+// ===================== OVERLAP + DRAW =====================
+function checkHandFaceOverlap(landmarks, faceBox) {
+  const { w, h } = videoDims();
+
+  const xs = landmarks.map((p) => p.x * w);
+  const ys = landmarks.map((p) => p.y * h);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  return (
+    faceBox.x < maxX &&
+    faceBox.x + faceBox.width > minX &&
+    faceBox.y < maxY &&
+    faceBox.y + faceBox.height > minY
+  );
+}
+
+function drawHandBoundingBox(ctx, landmarks, overlap) {
+  const { w, h } = videoDims();
+
+  const xs = landmarks.map((p) => p.x * w);
+  const ys = landmarks.map((p) => p.y * h);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  ctx.strokeStyle = overlap ? "#ff0000" : "#00ff88";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+}
+
+// ===================== DATA UPDATES =====================
+async function updateFaceData() {
+  currentFaceDetections = await faceapi
+    .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks();
+
+  setTimeout(updateFaceData, 100);
+}
+
+async function updateHandData() {
+  if (handDetector && video.videoWidth) {
+    await handDetector.send({ image: video });
+  }
+  requestAnimationFrame(updateHandData);
+}
+
+// ===================== SPOTIFY =====================
 async function fetchSpotifyTracks(emotion) {
   const res = await fetch("/analyzeEmotion", {
     method: "POST",
@@ -244,42 +200,114 @@ async function fetchSpotifyTracks(emotion) {
   });
 
   const songs = await res.json();
-  const list = document.querySelector("#suggested-songs ul");
 
-  list.innerHTML =
+  songList.innerHTML =
     `<h3>🎵 Based on ${emotion.toUpperCase()}</h3>` +
     songs
       .map(
         (s) => `
-      <li>
-        <b>${s.title}</b> - ${s.artist}
-        <iframe src="https://open.spotify.com/embed/track/${
-          s.spotify_url.split("/track/")[1]
-        }" width="100%" height="80"></iframe>
-      </li>
-    `
+        <li>
+          <b>${s.title}</b> - ${s.artist}
+          <iframe
+            src="https://open.spotify.com/embed/track/${
+              s.spotify_url.split("/track/")[1]
+            }"
+            width="100%" height="80">
+          </iframe>
+        </li>`
       )
       .join("");
 }
 
-// ====================================================================
-// INIT
-// ====================================================================
-async function setup() {
+// ===================== EMOTION ANALYSIS =====================
+function startEmotionAnalysis() {
+  analysisState = "ANALYZING";
+  clearFaceTime = 0;
+  emotionCounter = {};
+  lastTick = Date.now();
+
   analyzeBtn.disabled = true;
+  feedbackContainer.style.display = "none";
+  songList.innerHTML = "";
+
+  const interval = setInterval(async () => {
+    const now = Date.now();
+    const delta = now - lastTick;
+    lastTick = now;
+
+    if (isHandBlocking || !lastFaceBox) {
+      analysisState = "PAUSED";
+      statusDiv.textContent = "✋ Face blocked — paused";
+      return;
+    }
+
+    analysisState = "ANALYZING";
+    clearFaceTime += delta;
+    statusDiv.textContent =
+      `Analyzing... ${(clearFaceTime / 1000).toFixed(1)} / 5.0s`;
+
+    const detections = await faceapi
+      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceExpressions();
+
+    if (detections.length) {
+      const expr = detections[0].expressions;
+      const best = Object.keys(expr).reduce((a, b) =>
+        expr[a] > expr[b] ? a : b
+      );
+      emotionCounter[best] = (emotionCounter[best] || 0) + 1;
+    }
+
+    if (clearFaceTime >= ANALYSIS_DURATION) {
+      clearInterval(interval);
+      analysisState = "FINISHED";
+
+      const finalEmotion = Object.keys(emotionCounter).reduce((a, b) =>
+        emotionCounter[a] > emotionCounter[b] ? a : b
+      );
+
+      const emojiMap = {
+        happy: "😊",
+        sad: "😢",
+        angry: "😠",
+        surprised: "😲",
+        neutral: "😐",
+        fearful: "😨",
+        disgusted: "🤢",
+      };
+
+      predictedSpan.textContent = finalEmotion.toUpperCase();
+      containerEmoji.textContent = emojiMap[finalEmotion] || "🤔";
+      feedbackContainer.style.display = "block";
+
+      await fetchSpotifyTracks(finalEmotion);
+
+      analyzeBtn.disabled = false;
+      statusDiv.textContent = `✅ Dominant emotion: ${finalEmotion}`;
+    }
+  }, 300);
+}
+
+// ===================== SETUP =====================
+async function setup() {
   await loadModels();
   await setupHandDetector();
-  await startCamera();
 
-  analyzeBtn.disabled = false;
-  analyzeBtn.textContent = "Analyze Face";
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+  });
 
-  video.onplaying = () => {
-    startFaceLoop();
-    detectHands();
+  video.srcObject = stream;
+
+  video.onloadedmetadata = () => {
+    startUnifiedDrawLoop();
+    updateFaceData();
+    updateHandData();
   };
 
   analyzeBtn.onclick = startEmotionAnalysis;
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = "Analyze Face";
 }
 
 setup();

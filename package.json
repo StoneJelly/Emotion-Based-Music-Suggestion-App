@@ -16,6 +16,8 @@
     "ejs": "^3.1.10",
     "express": "^4.22.1",
     "face-api.js": "^0.22.2",
+    "firebase": "^12.7.0",
+    "firebase-admin": "^13.6.0",
     "mongoose": "^7.8.8",
     "multer": "^1.4.5-lts.1",
     "nodemon": "^3.0.1",
@@ -23,10 +25,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TokyoChan125/Emotion-Based-Music-Suggestion-App.git"
+    "url": "git+https://github.com/StoneJelly/Emotion-Based-Music-Suggestion-App.git"
   },
   "bugs": {
-    "url": "https://github.com/TokyoChan125/Emotion-Based-Music-Suggestion-App/issues"
+    "url": "https://github.com/StoneJelly/Emotion-Based-Music-Suggestion-App/issues"
   },
-  "homepage": "https://github.com/TokyoChan125/Emotion-Based-Music-Suggestion-App#readme"
+  "homepage": "https://github.com/StoneJelly/Emotion-Based-Music-Suggestion-App#readme"
 }
