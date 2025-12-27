@@ -5,14 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Smart Face Emotion and Hand Detection</title>
 
-  <!-- Face API -->
   <script defer src="face-api.min.js"></script>
 
-  <!-- MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.2/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
 
-  <!-- Your Script -->
   <script defer src="script.js"></script>
 
   <style>
@@ -25,7 +22,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      font-family: "Segoe UI", sans-serif;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     }
 
     header {
@@ -41,12 +38,14 @@
 
     #container {
       display: flex;
-      gap: 40px;
-      margin-top: 40px;
+      gap: 30px;
+      padding: 20px;
       align-items: flex-start;
+      justify-content: center;
+      max-width: 1200px;
     }
 
-    /* ===== VIDEO + CANVAS (CRITICAL FIX) ===== */
+    /* ===== VIDEO + CANVAS ===== */
     #video-container {
       position: relative;
       width: 720px;
@@ -54,7 +53,7 @@
       border-radius: 12px;
       overflow: hidden;
       background: black;
-      box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.2);
+      box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.2);
     }
 
     video,
@@ -74,6 +73,7 @@
       pointer-events: none;
     }
 
+    /* ===== CONTROLS & SONG LIST ===== */
     #controls {
       display: flex;
       flex-direction: column;
@@ -82,105 +82,124 @@
       background: white;
       border-radius: 12px;
       box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.1);
-      width: 320px;
+      width: 350px;
+      max-height: 85vh; /* Prevents container from going off-screen */
+
+      height: 80vh; 
+      box-sizing: border-box;
     }
 
     #analyzeBtn {
-      padding: 12px 20px;
+      padding: 14px 20px;
       background: #4b6cb7;
       color: white;
       border: none;
-      font-size: 1rem;
+      font-size: 1.1rem;
+      font-weight: bold;
       border-radius: 8px;
       cursor: pointer;
-      transition: 0.2s;
+      transition: all 0.3s ease;
     }
 
     #analyzeBtn:hover {
       background: #3c56a0;
+      transform: translateY(-2px);
     }
 
     #analyzeBtn:disabled {
       background: #ccc;
       cursor: not-allowed;
+      transform: none;
     }
 
     #status {
-      padding: 8px 0;
+      padding: 10px;
       font-weight: bold;
-      color: #4b6cb7;
+      color: #182848;
       text-align: center;
+      background: #eef2f7;
+      border-radius: 6px;
     }
 
+    /* ===== SCROLLABLE SONG LIST SECTION ===== */
     #suggested-songs {
-      margin-top: 10px;
-      padding: 15px;
-      background: #ffffff;
-      border-radius: 10px;
-      box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    iframe {
-      border: none;
-      border-radius: 8px;
-      margin-top: 10px;
+    #song-list {
+      list-style: none;
+      padding: 0;
+      margin-top: 15px;
+      
+      /* THE SCROLLBAR SETTINGS */
+      overflow-y: auto;
+      flex: 1;
+      padding-right: 8px;
+    }
+
+    /* Custom Scrollbar for Song List */
+    #song-list::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    #song-list::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+
+    #song-list::-webkit-scrollbar-thumb {
+      background: #4b6cb7;
+      border-radius: 10px;
+    }
+
+    #song-list::-webkit-scrollbar-thumb:hover {
+      background: #182848;
+    }
+
+    /* FEEDBACK POPUP */
+    #feedback-container {
+      background: #fff9db;
+      padding: 15px;
+      border-radius: 10px;
+      border: 2px solid #fcc419;
+      margin-bottom: 15px;
     }
   </style>
 </head>
 
 <body>
 
-  <header>😊 Smart Face Emotion Detection with Hand-Guard</header>
+  <header>😊 Emotion-Sync Music Player</header>
 
   <div id="container">
 
-    <!-- VIDEO -->
     <div id="video-container">
       <video id="video" autoplay muted playsinline></video>
     </div>
 
-    <!-- CONTROLS -->
     <div id="controls">
-      <button id="analyzeBtn" disabled>Loading Models...</button>
-      <div id="status">Ready</div>
+      <button id="analyzeBtn" disabled>Loading AI Models...</button>
+      <div id="status">Ready to Start</div>
+
+      <div id="feedback-container" style="display:none;">
+        <p style="margin:0 0 10px 0; font-size:0.95rem;">
+          Detected: <strong><span id="predicted-emotion-text">...</span></strong> 
+          <span id="container-emoji"></span>
+        </p>
+        <div style="display:flex; gap:10px;">
+          <button id="btn-yes" style="flex:1; padding:8px; background:#2f9e44; color:white; border:none; border-radius:5px; cursor:pointer;">Correct</button>
+          <button id="btn-no" style="flex:1; padding:8px; background:#e03131; color:white; border:none; border-radius:5px; cursor:pointer;">Wrong</button>
+        </div>
+      </div>
 
       <div id="suggested-songs">
-        <strong>🎵 Suggested Songs</strong>
-
-        <!-- FEEDBACK -->
-        <div id="feedback-container" style="
-          display:none;
-          background:#ffffff;
-          padding:15px;
-          border-radius:12px;
-          border:2px solid #4b6cb7;
-          margin:15px 0;
-          box-shadow:0 4px 12px rgba(0,0,0,0.1);
-        ">
-          <p style="margin:0 0 10px 0; font-size:0.95rem; color:#182848;">
-            Is your emotion
-            <strong><span id="predicted-emotion-text">...</span></strong>
-            <span id="container-emoji"></span> ?
-          </p>
-
-          <div style="display:flex; gap:10px;">
-            <button id="btn-yes" style="
-              flex:1; padding:8px;
-              background:#4b6cb7; color:white;
-              border:none; border-radius:6px;
-              cursor:pointer; font-weight:bold;
-            ">Yes</button>
-
-            <button id="btn-no" style="
-              flex:1; padding:8px;
-              background:#e0e0e0; color:#333;
-              border:none; border-radius:6px;
-              cursor:pointer; font-weight:bold;
-            ">No</button>
-          </div>
-        </div>
-
-        <ul id="song-list" style="list-style:none; padding:0;"></ul>
+        <strong style="font-size: 1.1rem; color: #182848;">🎵 Your Personalized Playlist</strong>
+        <ul id="song-list">
+          <p style="color: #888; font-size: 0.9rem; text-align: center;">Analyze your face to see song suggestions.</p>
+        </ul>
       </div>
     </div>
   </div>
