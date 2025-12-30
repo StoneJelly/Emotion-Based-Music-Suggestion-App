@@ -3,30 +3,29 @@ const admin = require('firebase-admin');
 const bodyParser = require('body-parser');
 const path = require('path');
 const SpotifyWebApi = require('spotify-web-api-node');
+const cors = require('cors'); // added for Angular API calls
 
 const Music = require('./model/music');
-
-const serviceAccount = require('./serviceAccountKey.json')
+const serviceAccount = require('./serviceAccountKey.json');
 
 const app = express();
 const port = 3000;
 
-
+// Initialize Firebase
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
-})
-
+});
 const db = admin.firestore();
 
-// Set up middleware
+// --- Middleware ---
+app.use(cors()); // optional: allows Angular frontend to call APIs
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/models', express.static(path.join(__dirname, 'models')));
 
-// Spotify credentials: you can hardcode your client id/secret here
-// Replace the placeholder strings below with your actual credentials
+// --- Spotify setup ---
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '0b7cdbcd9614456798ab1816a2490600';
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || 'eddaccc6181c4d918accb82416b71fb7';
 
@@ -39,84 +38,62 @@ if (SPOTIFY_CLIENT_ID.startsWith('YOUR_') || SPOTIFY_CLIENT_SECRET.startsWith('Y
   console.warn('Warning: Spotify client ID/secret are using placeholder values in server.js. Replace them with real credentials.');
 }
 
-// Spotify authentication
 async function spotifyAuth() {
   try {
     const data = await spotifyApi.clientCredentialsGrant();
     spotifyApi.setAccessToken(data.body['access_token']);
     console.log('Spotify access token acquired');
-    // Refresh token shortly before expiry
     setTimeout(spotifyAuth, (data.body['expires_in'] - 60) * 1000);
   } catch (error) {
     console.error('Error authenticating with Spotify:', error);
   }
 }
 
-// Modified: Root route now redirects to the photo analysis page
+// --- Routes ---
+
+// Root route now redirects to /photo
 app.get('/', (req, res) => {
-  // Assuming the main entry point is now the emotion analysis
   res.redirect('/photo');
 });
 
+// New route to serve photo.ejs for Angular iframe
 app.get('/photo', (req, res) => {
-  res.render('photo'); // Renders the capture.ejs view
+  res.render('photo'); // your face/hand detection EJS page
 });
 
+// Existing emotion analysis route
 app.post('/analyzeEmotion', async (req, res) => {
   try {
     const { emotion } = req.body;
 
-    // Map emotions to Spotify-friendly keywords/genres
     let query;
     switch (emotion) {
-      case 'happy':
-        query = 'happy';
-        break;
-      case 'neutral':
-        query = 'chill';
-        break;
-      case 'angry':
-        query = 'rock';
-        break;
-      case 'sad':
-        query = 'sad';
-        break;
-      default:
-        query = 'pop';
-        break;
+      case 'happy': query = 'happy'; break;
+      case 'neutral': query = 'chill'; break;
+      case 'angry': query = 'rock'; break;
+      case 'sad': query = 'sad'; break;
+      default: query = 'pop'; break;
     }
 
-    // Step 1: Get total number of tracks available for this genre
     const initialResponse = await spotifyApi.searchTracks(`genre:${query}`, { limit: 1 });
     const totalTracks = initialResponse.body.tracks.total;
-
-    // Step 2: Pick a random offset for variety
     const offset = Math.floor(Math.random() * Math.max(totalTracks - 10, 1));
-
-    // Step 3: Fetch 10 tracks starting from the random offset
-    const spotifyResponse = await spotifyApi.searchTracks(`genre:${query}`, {
-      limit: 10,
-      offset,
-    });
+    const spotifyResponse = await spotifyApi.searchTracks(`genre:${query}`, { limit: 10, offset });
 
     const tracks = spotifyResponse.body.tracks.items;
-
-    // Step 4: Shuffle tracks to maximize randomness
     const shuffledTracks = tracks.sort(() => Math.random() - 0.5);
 
-    // Step 5: Map tracks to frontend-friendly format
     const songs = shuffledTracks
-      .filter(track => track.preview_url || track.external_urls.spotify) // ensure at least preview or link exists
+      .filter(track => track.preview_url || track.external_urls.spotify)
       .map(track => ({
         title: track.name,
         artist: track.artists.map(a => a.name).join(', '),
         genre: query,
-        preview_url: track.preview_url, // 30-sec preview
-        spotify_url: track.external_urls.spotify, // full track link
+        preview_url: track.preview_url,
+        spotify_url: track.external_urls.spotify,
       }));
 
-    console.log("Songs sent to frontend:", songs); // Debug log
-
+    console.log("Songs sent to frontend:", songs);
     res.json(songs);
   } catch (err) {
     console.error('Error fetching Spotify tracks:', err);
@@ -124,7 +101,7 @@ app.post('/analyzeEmotion', async (req, res) => {
   }
 });
 
-// Start the server
+// Start server
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });

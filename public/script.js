@@ -125,7 +125,7 @@ async function updateFaceData() {
     currentFaceDetections = [];
   }
 
-  setTimeout(updateDaceData, 100);
+  setTimeout(updateFaceData, 50);
 }
 
 async function updateHandData() {
